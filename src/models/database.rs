@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct DbSummoner {
@@ -135,9 +135,9 @@ pub struct DbApiCall {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SummonerPriority {
-    High,    // Master+ tier, recently active
-    Medium,  // Diamond tier, active within 7 days
-    Low,     // Other tiers, older activity
+    High,   // Master+ tier, recently active
+    Medium, // Diamond tier, active within 7 days
+    Low,    // Other tiers, older activity
 }
 
 #[derive(Debug, Clone)]

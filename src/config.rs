@@ -70,32 +70,32 @@ impl Default for Config {
 impl Config {
     pub fn from_env() -> crate::Result<Self> {
         dotenv::dotenv().ok();
-        
+
         let mut config = Config::default();
-        
+
         if let Ok(api_key) = std::env::var("RIOT_API_KEY") {
             config.riot_api_key = api_key;
         }
-        
+
         if let Ok(db_url) = std::env::var("DATABASE_URL") {
             config.database_url = db_url;
         }
-        
+
         if let Ok(regions) = std::env::var("REGIONS") {
             config.regions = regions.split(',').map(|s| s.trim().to_string()).collect();
         }
-        
+
         if let Ok(log_level) = std::env::var("LOG_LEVEL") {
             config.logging.level = log_level;
         }
-        
+
         if config.riot_api_key.is_empty() {
             anyhow::bail!("RIOT_API_KEY environment variable is required");
         }
-        
+
         Ok(config)
     }
-    
+
     pub fn base_url_for_region(&self, region: &str) -> String {
         match region {
             "na1" => "https://na1.api.riotgames.com".to_string(),
@@ -112,7 +112,7 @@ impl Config {
             _ => format!("https://{}.api.riotgames.com", region),
         }
     }
-    
+
     pub fn regional_base_url_for_region(&self, region: &str) -> String {
         match region {
             "na1" | "br1" | "la1" | "la2" => "https://americas.api.riotgames.com".to_string(),

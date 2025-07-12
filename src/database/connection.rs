@@ -1,7 +1,7 @@
+use crate::Result;
 use rusqlite::{Connection, Result as SqliteResult};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use crate::Result;
 
 #[derive(Clone)]
 pub struct Database {
@@ -33,7 +33,7 @@ impl Database {
 
     fn initialize_schema(&self) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        
+
         // Create summoners table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS summoners (
@@ -221,11 +221,26 @@ impl Database {
         )?;
 
         // Create indexes
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_participants_match_id ON participants(match_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_participants_puuid ON participants(puuid)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_game_creation ON matches(game_creation)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_queue_id ON matches(queue_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_summoners_region ON summoners(region)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_participants_match_id ON participants(match_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_participants_puuid ON participants(puuid)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_matches_game_creation ON matches(game_creation)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_matches_queue_id ON matches(queue_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_summoners_region ON summoners(region)",
+            [],
+        )?;
 
         // Initialize crawler state if not exists
         conn.execute(
@@ -245,19 +260,24 @@ impl Database {
         Ok(conn.query_row(sql, params, f)?)
     }
 
-    pub fn query_map<T, F>(&self, sql: &str, params: &[&dyn rusqlite::ToSql], mut f: F) -> Result<Vec<T>>
+    pub fn query_map<T, F>(
+        &self,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        mut f: F,
+    ) -> Result<Vec<T>>
     where
         F: FnMut(&rusqlite::Row) -> SqliteResult<T>,
     {
         let conn = self.connection.lock().unwrap();
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query_map(params, &mut f)?;
-        
+
         let mut results = Vec::new();
         for row in rows {
             results.push(row?);
         }
-        
+
         Ok(results)
     }
 }

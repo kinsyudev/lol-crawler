@@ -83,10 +83,18 @@ impl CrawlerEngine {
         for region in &self.config.regions {
             match self.process_featured_games_for_region(region).await {
                 Ok(count) => {
-                    log::info!("Added {} high-priority summoners from {} featured games", count, region);
+                    log::info!(
+                        "Added {} high-priority summoners from {} featured games",
+                        count,
+                        region
+                    );
                 }
                 Err(e) => {
-                    log::error!("Failed to process featured games for region {}: {}", region, e);
+                    log::error!(
+                        "Failed to process featured games for region {}: {}",
+                        region,
+                        e
+                    );
                 }
             }
         }
@@ -102,10 +110,14 @@ impl CrawlerEngine {
         let summoner_tasks = match self.api_client.get_featured_games(region).await {
             Ok(featured_games) => {
                 log::info!("Using featured games for seeding in region {}", region);
-                self.extract_summoners_from_featured_games(featured_games, region).await?
+                self.extract_summoners_from_featured_games(featured_games, region)
+                    .await?
             }
             Err(e) => {
-                log::warn!("Featured games not accessible ({}), falling back to master league", e);
+                log::warn!(
+                    "Featured games not accessible ({}), falling back to master league",
+                    e
+                );
                 self.extract_summoners_from_master_league(region).await?
             }
         };
@@ -118,7 +130,11 @@ impl CrawlerEngine {
         Ok(count)
     }
 
-    async fn extract_summoners_from_featured_games(&self, featured_games: crate::models::riot::FeaturedGamesResponse, region: &str) -> crate::Result<Vec<SummonerTask>> {
+    async fn extract_summoners_from_featured_games(
+        &self,
+        featured_games: crate::models::riot::FeaturedGamesResponse,
+        region: &str,
+    ) -> crate::Result<Vec<SummonerTask>> {
         let mut summoner_tasks = Vec::new();
 
         for game in featured_games.game_list {
@@ -176,13 +192,20 @@ impl CrawlerEngine {
         Ok(summoner_tasks)
     }
 
-    async fn extract_summoners_from_master_league(&self, region: &str) -> crate::Result<Vec<SummonerTask>> {
+    async fn extract_summoners_from_master_league(
+        &self,
+        region: &str,
+    ) -> crate::Result<Vec<SummonerTask>> {
         log::info!("Fetching master league players for region {}", region);
-        
-        let master_league = self.api_client.get_master_league(region, "RANKED_SOLO_5x5").await?;
+
+        let master_league = self
+            .api_client
+            .get_master_league(region, "RANKED_SOLO_5x5")
+            .await?;
         let mut summoner_tasks = Vec::new();
 
-        for entry in master_league.entries.into_iter().take(50) { // Limit to 50 for initial seeding
+        for entry in master_league.entries.into_iter().take(50) {
+            // Limit to 50 for initial seeding
             // Check if we already have this summoner
             match self.database.summoner_exists(&entry.puuid) {
                 Ok(true) => continue, // Skip existing summoners
@@ -212,12 +235,18 @@ impl CrawlerEngine {
             }
         }
 
-        log::info!("Found {} master league players in region {}", summoner_tasks.len(), region);
+        log::info!(
+            "Found {} master league players in region {}",
+            summoner_tasks.len(),
+            region
+        );
         Ok(summoner_tasks)
     }
 
     async fn spawn_featured_games_task(&self) -> crate::Result<()> {
-        let mut interval = interval(Duration::from_secs(self.config.crawler.featured_games_interval_seconds));
+        let mut interval = interval(Duration::from_secs(
+            self.config.crawler.featured_games_interval_seconds,
+        ));
         let _api_client = self.api_client.clone();
         let _database = self.database.clone();
         let _queue = &self.summoner_queue;
@@ -237,11 +266,19 @@ impl CrawlerEngine {
                 match self.process_featured_games_for_region(region).await {
                     Ok(count) => {
                         if count > 0 {
-                            log::info!("Added {} new summoners from {} featured games", count, region);
+                            log::info!(
+                                "Added {} new summoners from {} featured games",
+                                count,
+                                region
+                            );
                         }
                     }
                     Err(e) => {
-                        log::error!("Failed to refresh featured games for region {}: {}", region, e);
+                        log::error!(
+                            "Failed to refresh featured games for region {}: {}",
+                            region,
+                            e
+                        );
                     }
                 }
             }
@@ -289,7 +326,9 @@ impl CrawlerEngine {
                             let (high, medium, low) = self.summoner_queue.size().await;
                             log::info!(
                                 "Queue status: {} high, {} medium, {} low priority summoners",
-                                high, medium, low
+                                high,
+                                medium,
+                                low
                             );
                         }
                     }
@@ -311,12 +350,18 @@ impl CrawlerEngine {
             }
         }
 
-        log::info!("Crawler task completed. Processed {} summoners, {} matches", processed_count, matches_processed);
+        log::info!(
+            "Crawler task completed. Processed {} summoners, {} matches",
+            processed_count,
+            matches_processed
+        );
         Ok(())
     }
 
     async fn spawn_health_check_task(&self) -> crate::Result<()> {
-        let mut interval = interval(Duration::from_secs(self.config.crawler.health_check_interval_seconds));
+        let mut interval = interval(Duration::from_secs(
+            self.config.crawler.health_check_interval_seconds,
+        ));
         let running = self.running.clone();
 
         loop {
@@ -336,8 +381,12 @@ impl CrawlerEngine {
 
             log::info!(
                 "Health Check - Queue: {}H/{}M/{}L, DB: {}M/{}S/{}P, Rate Limits: {}/{}",
-                high, medium, low,
-                matches_count, summoners_count, participants_count,
+                high,
+                medium,
+                low,
+                matches_count,
+                summoners_count,
+                participants_count,
                 rate_limit_status.application_tokens_per_second,
                 rate_limit_status.application_tokens_per_two_minutes
             );
@@ -347,7 +396,9 @@ impl CrawlerEngine {
     }
 
     async fn spawn_state_save_task(&self) -> crate::Result<()> {
-        let mut interval = interval(Duration::from_secs(self.config.crawler.state_save_interval_seconds));
+        let mut interval = interval(Duration::from_secs(
+            self.config.crawler.state_save_interval_seconds,
+        ));
         let running = self.running.clone();
 
         loop {

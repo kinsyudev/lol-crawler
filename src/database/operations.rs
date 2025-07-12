@@ -128,7 +128,12 @@ impl Database {
     pub fn insert_ban(&self, ban: &DbBan) -> Result<()> {
         self.execute(
             "INSERT INTO bans (match_id, team_id, champion_id, pick_turn) VALUES (?1, ?2, ?3, ?4)",
-            &[&ban.match_id, &ban.team_id, &ban.champion_id, &ban.pick_turn],
+            &[
+                &ban.match_id,
+                &ban.team_id,
+                &ban.champion_id,
+                &ban.pick_turn,
+            ],
         )?;
         Ok(())
     }
@@ -214,7 +219,7 @@ impl Database {
         let count: i64 = self.query_row(
             "SELECT COUNT(*) FROM summoners WHERE puuid = ?1",
             &[&puuid],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
         Ok(count > 0)
     }
@@ -223,7 +228,7 @@ impl Database {
         let count: i64 = self.query_row(
             "SELECT COUNT(*) FROM matches WHERE match_id = ?1",
             &[&match_id],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
         Ok(count > 0)
     }
@@ -244,36 +249,25 @@ impl Database {
              WHERE puuid NOT IN (SELECT puuid FROM summoners) 
              LIMIT ?1",
             &[&limit],
-            |row| Ok(row.get::<_, String>(0)?)
+            |row| Ok(row.get::<_, String>(0)?),
         )?;
 
         Ok(puuids)
     }
 
     pub fn get_matches_count(&self) -> Result<i64> {
-        let count: i64 = self.query_row(
-            "SELECT COUNT(*) FROM matches",
-            &[],
-            |row| row.get(0)
-        )?;
+        let count: i64 = self.query_row("SELECT COUNT(*) FROM matches", &[], |row| row.get(0))?;
         Ok(count)
     }
 
     pub fn get_summoners_count(&self) -> Result<i64> {
-        let count: i64 = self.query_row(
-            "SELECT COUNT(*) FROM summoners",
-            &[],
-            |row| row.get(0)
-        )?;
+        let count: i64 = self.query_row("SELECT COUNT(*) FROM summoners", &[], |row| row.get(0))?;
         Ok(count)
     }
 
     pub fn get_participants_count(&self) -> Result<i64> {
-        let count: i64 = self.query_row(
-            "SELECT COUNT(*) FROM participants",
-            &[],
-            |row| row.get(0)
-        )?;
+        let count: i64 =
+            self.query_row("SELECT COUNT(*) FROM participants", &[], |row| row.get(0))?;
         Ok(count)
     }
 }

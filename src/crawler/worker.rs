@@ -1,6 +1,8 @@
-use crate::api::RiotApiClient;
+use crate::api::{queues, RiotApiClient};
 use crate::database::Database;
-use crate::models::database::{DbMatch, DbParticipant, DbSummoner, DbTeam, DbBan, SummonerTask, SummonerPriority};
+use crate::models::database::{
+    DbBan, DbMatch, DbParticipant, DbSummoner, DbTeam, SummonerPriority, SummonerTask,
+};
 use chrono::Utc;
 use std::collections::HashSet;
 
@@ -18,11 +20,18 @@ impl CrawlerWorker {
     }
 
     pub async fn process_summoner(&self, task: &SummonerTask) -> crate::Result<Vec<SummonerTask>> {
-        log::info!("Processing summoner: {} ({}) in region: {}", 
-                  task.summoner_name, task.puuid, task.region);
+        log::info!(
+            "Processing summoner: {} ({}) in region: {}",
+            task.summoner_name,
+            task.puuid,
+            task.region
+        );
 
         // First, fetch summoner details and store them
-        match self.fetch_and_store_summoner(&task.puuid, &task.region).await {
+        match self
+            .fetch_and_store_summoner(&task.puuid, &task.region)
+            .await
+        {
             Ok(_) => log::debug!("Summoner {} stored successfully", task.puuid),
             Err(e) => {
                 log::warn!("Failed to fetch summoner {}: {}", task.puuid, e);
@@ -31,12 +40,16 @@ impl CrawlerWorker {
         }
 
         // Fetch match history
-        let match_ids = match self.api_client.get_match_list_by_puuid(
-            &task.region,
-            &task.puuid,
-            Some(0),
-            Some(20), // Fetch last 20 matches
-        ).await {
+        let match_ids = match self
+            .api_client
+            .get_match_list_by_puuid(
+                &task.region,
+                &task.puuid,
+                Some(0),
+                Some(20), // Fetch last 20 matches
+            )
+            .await
+        {
             Ok(matches) => matches,
             Err(e) => {
                 log::error!("Failed to fetch match list for {}: {}", task.puuid, e);
@@ -44,7 +57,11 @@ impl CrawlerWorker {
             }
         };
 
-        log::debug!("Found {} matches for summoner {}", match_ids.len(), task.puuid);
+        log::debug!(
+            "Found {} matches for summoner {}",
+            match_ids.len(),
+            task.puuid
+        );
 
         let mut new_summoners = HashSet::new();
 
@@ -87,8 +104,11 @@ impl CrawlerWorker {
             })
             .collect();
 
-        log::info!("Discovered {} new summoners from processing {}", 
-                  new_tasks.len(), task.summoner_name);
+        log::info!(
+            "Discovered {} new summoners from processing {}",
+            new_tasks.len(),
+            task.summoner_name
+        );
 
         Ok(new_tasks)
     }
@@ -100,7 +120,9 @@ impl CrawlerWorker {
             puuid: summoner.puuid.clone(),
             summoner_id: summoner.id.unwrap_or_else(|| "".to_string()),
             account_id: summoner.account_id.unwrap_or_else(|| "".to_string()),
-            summoner_name: summoner.name.unwrap_or_else(|| format!("Player_{}", &summoner.puuid[..8])),
+            summoner_name: summoner
+                .name
+                .unwrap_or_else(|| format!("Player_{}", &summoner.puuid[..8])),
             profile_icon_id: summoner.profile_icon_id as i32,
             summoner_level: summoner.summoner_level as i32,
             region: region.to_string(),
@@ -112,9 +134,23 @@ impl CrawlerWorker {
         Ok(())
     }
 
-    async fn fetch_and_store_match(&self, match_id: &str, region: &str) -> crate::Result<HashSet<(String, String)>> {
+    async fn fetch_and_store_match(
+        &self,
+        match_id: &str,
+        region: &str,
+    ) -> crate::Result<HashSet<(String, String)>> {
         let match_data = self.api_client.get_match_by_id(region, match_id).await?;
-        
+
+        // Filter to only ranked solo/duo games
+        if match_data.info.queue_id != queues::RANKED_SOLO_QUEUE_ID {
+            log::debug!(
+                "Skipping non-ranked solo/duo match {} with queue_id {}",
+                match_id,
+                match_data.info.queue_id
+            );
+            return Ok(HashSet::new());
+        }
+
         // Store match metadata
         let db_match = DbMatch {
             match_id: match_data.metadata.match_id.clone(),
@@ -159,7 +195,8 @@ impl CrawlerWorker {
 
             // Store bans
             for ban in &team.bans {
-                if ban.champion_id > 0 { // 0 or -1 indicates no ban
+                if ban.champion_id > 0 {
+                    // 0 or -1 indicates no ban
                     let db_ban = DbBan {
                         id: None,
                         match_id: match_data.metadata.match_id.clone(),
@@ -178,10 +215,8 @@ impl CrawlerWorker {
 
         for participant in &match_data.info.participants {
             // In Match-v5, participant data includes PUUID directly
-            discovered_summoners.insert((
-                participant.puuid.clone(),
-                participant.summoner_name.clone(),
-            ));
+            discovered_summoners
+                .insert((participant.puuid.clone(), participant.summoner_name.clone()));
 
             let db_participant = DbParticipant {
                 id: None,
@@ -215,8 +250,14 @@ impl CrawlerWorker {
                 items_6: participant.item6,
                 summoner_spell_1: participant.summoner1_id,
                 summoner_spell_2: participant.summoner2_id,
-                primary_rune_tree: participant.perks.as_ref().and_then(|p| p.styles.get(0).map(|s| s.style)),
-                secondary_rune_tree: participant.perks.as_ref().and_then(|p| p.styles.get(1).map(|s| s.style)),
+                primary_rune_tree: participant
+                    .perks
+                    .as_ref()
+                    .and_then(|p| p.styles.get(0).map(|s| s.style)),
+                secondary_rune_tree: participant
+                    .perks
+                    .as_ref()
+                    .and_then(|p| p.styles.get(1).map(|s| s.style)),
                 win: participant.win,
                 first_blood_kill: participant.first_blood_kill,
                 first_tower_kill: participant.first_tower_kill,

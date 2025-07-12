@@ -1,10 +1,12 @@
-# League of Legends Game Data Crawler
+# League of Legends Ranked Solo/Duo Data Crawler
 
-A Rust-based data crawler that systematically collects comprehensive League of Legends match data using Riot Games' API.
+A Rust-based data crawler that systematically collects comprehensive **ranked solo/duo** League of Legends match data using Riot Games' API.
 
 ## Overview
 
-This crawler operates by starting with Master+ tier players and expanding outward through the player network to build a comprehensive dataset of League of Legends matches. The system is designed to gather and store detailed game information in a local SQLite database for analysis and research purposes.
+This crawler operates by starting with Master+ tier players and expanding outward through the player network to build a comprehensive dataset of **ranked solo/duo queue matches only** (Queue ID 420). The system is designed to gather and store detailed competitive game information in a local SQLite database for analysis and research purposes.
+
+> **🎯 Data Focus**: This crawler exclusively collects ranked solo/duo queue data, filtering out all other game modes (ARAM, normals, flex queue, etc.) to provide a clean dataset of competitive 5v5 gameplay.
 
 ## How It Works
 
@@ -14,18 +16,19 @@ This crawler operates by starting with Master+ tier players and expanding outwar
 - Extracts player lists from these high-tier sources as initial crawl targets
 
 ### 2. Recursive Player Discovery
-- For each discovered player, retrieves their complete match history
-- Extracts unique players from each match to expand the crawl frontier
-- Continues this process to build an ever-growing network of players and matches
+- For each discovered player, retrieves their match history
+- **Filters matches to ranked solo/duo queue only** (Queue ID 420)
+- Extracts unique players from qualifying matches to expand the crawl frontier
+- Continues this process to build an ever-growing network of competitive players and matches
 
 ### 3. Comprehensive Data Storage
-- Stores complete match data including:
+- Stores complete **ranked solo/duo match data** including:
   - Match metadata (duration, game mode, patch version, etc.)
   - Player performance statistics (KDA, damage, gold, CS, etc.)
   - Champion selections and item builds
   - Team objectives and achievements
   - Participant runes and summoner spells
-- All data persisted in a local SQLite database for efficient querying
+- All competitive data persisted in a local SQLite database for efficient querying
 
 ## Architecture
 
@@ -88,21 +91,23 @@ The SQLite database stores data across multiple tables:
 
 ## Features
 
+- **Ranked-only data collection**: Exclusively collects ranked solo/duo queue matches (Queue ID 420)
 - **Automatic API compliance**: Built-in rate limiting respects Riot API limits
 - **Robust error handling**: Automatic retries and fallback strategies
 - **Efficient storage**: Optimized SQLite schema for fast queries
-- **Multi-region support**: Crawl data from any Riot Games region
+- **Multi-region support**: Crawl ranked data from any Riot Games region
 - **Priority queues**: Smart crawling prioritizes high-value targets
 - **Real-time monitoring**: Health checks and progress tracking
 
 ## Use Cases
 
-This dataset enables analysis of:
-- Meta trends and champion balance
-- Player behavior patterns
-- Game outcome prediction
-- Skill progression tracking
-- Team composition effectiveness
+This ranked solo/duo dataset enables analysis of:
+- **Competitive meta trends** and champion balance in ranked play
+- **High-level player behavior** patterns and decision-making
+- **Ranked game outcome prediction** models
+- **Skill progression tracking** through the ranked ladder
+- **Team composition effectiveness** in competitive environments
+- **Patch impact analysis** on ranked gameplay
 
 ## Important Notes
 

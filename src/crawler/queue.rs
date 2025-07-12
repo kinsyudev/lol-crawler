@@ -114,7 +114,7 @@ impl SummonerQueue {
         let mut high = self.high_priority.write().await;
         let mut medium = self.medium_priority.write().await;
         let mut low = self.low_priority.write().await;
-        
+
         high.clear();
         medium.clear();
         low.clear();
@@ -149,7 +149,8 @@ impl SummonerQueue {
         // This is a simplified implementation - in production you might want
         // to use a more efficient approach with sets
         self.remove_duplicates_from_queue(&self.high_priority).await;
-        self.remove_duplicates_from_queue(&self.medium_priority).await;
+        self.remove_duplicates_from_queue(&self.medium_priority)
+            .await;
         self.remove_duplicates_from_queue(&self.low_priority).await;
     }
 
@@ -195,9 +196,15 @@ mod tests {
         let queue = SummonerQueue::new();
 
         // Add tasks in reverse priority order
-        queue.push(create_test_task("low", SummonerPriority::Low)).await;
-        queue.push(create_test_task("high", SummonerPriority::High)).await;
-        queue.push(create_test_task("medium", SummonerPriority::Medium)).await;
+        queue
+            .push(create_test_task("low", SummonerPriority::Low))
+            .await;
+        queue
+            .push(create_test_task("high", SummonerPriority::High))
+            .await;
+        queue
+            .push(create_test_task("medium", SummonerPriority::Medium))
+            .await;
 
         // Should pop in priority order
         assert_eq!(queue.pop().await.unwrap().puuid, "high");
@@ -210,10 +217,18 @@ mod tests {
     async fn test_queue_sizes() {
         let queue = SummonerQueue::new();
 
-        queue.push(create_test_task("1", SummonerPriority::High)).await;
-        queue.push(create_test_task("2", SummonerPriority::High)).await;
-        queue.push(create_test_task("3", SummonerPriority::Medium)).await;
-        queue.push(create_test_task("4", SummonerPriority::Low)).await;
+        queue
+            .push(create_test_task("1", SummonerPriority::High))
+            .await;
+        queue
+            .push(create_test_task("2", SummonerPriority::High))
+            .await;
+        queue
+            .push(create_test_task("3", SummonerPriority::Medium))
+            .await;
+        queue
+            .push(create_test_task("4", SummonerPriority::Low))
+            .await;
 
         let (high, medium, low) = queue.size().await;
         assert_eq!(high, 2);

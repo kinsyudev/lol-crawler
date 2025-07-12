@@ -22,17 +22,23 @@ impl RateLimiter {
                 config.application_limit_per_second,
                 config.application_limit_per_second,
             ))),
-            application_limiter_per_two_minutes: Arc::new(RwLock::new(TokenBucket::per_two_minutes(
-                config.application_limit_per_two_minutes,
-                config.application_limit_per_two_minutes,
-            ))),
+            application_limiter_per_two_minutes: Arc::new(RwLock::new(
+                TokenBucket::per_two_minutes(
+                    config.application_limit_per_two_minutes,
+                    config.application_limit_per_two_minutes,
+                ),
+            )),
             method_limiters: Arc::new(DashMap::new()),
             service_limiters: Arc::new(DashMap::new()),
             config,
         }
     }
 
-    pub async fn acquire_permit(&self, endpoint: &str, region: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn acquire_permit(
+        &self,
+        endpoint: &str,
+        region: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let retries = self.config.max_retries;
         let mut retry_count = 0;
 
@@ -46,15 +52,28 @@ impl RateLimiter {
             retry_count += 1;
             if retry_count < retries {
                 let delay = Duration::from_millis(self.config.retry_delay_ms * (1 << retry_count)); // Exponential backoff
-                log::debug!("Rate limit hit, retrying in {:?} (attempt {}/{})", delay, retry_count, retries);
+                log::debug!(
+                    "Rate limit hit, retrying in {:?} (attempt {}/{})",
+                    delay,
+                    retry_count,
+                    retries
+                );
                 sleep(delay).await;
             }
         }
 
-        Err(format!("Failed to acquire rate limit permit after {} retries", retries).into())
+        Err(format!(
+            "Failed to acquire rate limit permit after {} retries",
+            retries
+        )
+        .into())
     }
 
-    async fn try_acquire_all(&self, endpoint: &str, region: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    async fn try_acquire_all(
+        &self,
+        endpoint: &str,
+        region: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         // Check application rate limits first
         {
             let mut app_limiter_per_sec = self.application_limiter_per_second.write().await;
@@ -65,7 +84,8 @@ impl RateLimiter {
         }
 
         {
-            let mut app_limiter_per_two_min = self.application_limiter_per_two_minutes.write().await;
+            let mut app_limiter_per_two_min =
+                self.application_limiter_per_two_minutes.write().await;
             if !app_limiter_per_two_min.try_acquire(1) {
                 log::debug!("Application rate limit per two minutes hit");
                 return Ok(false);
@@ -107,7 +127,11 @@ impl RateLimiter {
             .clone()
     }
 
-    fn get_or_create_service_limiter(&self, service: &str, region: &str) -> Arc<RwLock<TokenBucket>> {
+    fn get_or_create_service_limiter(
+        &self,
+        service: &str,
+        region: &str,
+    ) -> Arc<RwLock<TokenBucket>> {
         let service_key = format!("{}:{}", service, region);
         self.service_limiters
             .entry(service_key)
@@ -129,7 +153,12 @@ impl RateLimiter {
         }
     }
 
-    pub async fn update_limits_from_headers(&self, endpoint: &str, region: &str, headers: &reqwest::header::HeaderMap) {
+    pub async fn update_limits_from_headers(
+        &self,
+        endpoint: &str,
+        region: &str,
+        headers: &reqwest::header::HeaderMap,
+    ) {
         // Update rate limits based on API response headers
         if let Some(app_limit) = headers.get("X-App-Rate-Limit") {
             if let Ok(limit_str) = app_limit.to_str() {
@@ -139,14 +168,16 @@ impl RateLimiter {
 
         if let Some(method_limit) = headers.get("X-Method-Rate-Limit") {
             if let Ok(limit_str) = method_limit.to_str() {
-                self.parse_and_update_method_limits(endpoint, region, limit_str).await;
+                self.parse_and_update_method_limits(endpoint, region, limit_str)
+                    .await;
             }
         }
 
         if let Some(service_limit) = headers.get("X-Service-Rate-Limit") {
             if let Ok(limit_str) = service_limit.to_str() {
                 let service = self.extract_service_from_endpoint(endpoint);
-                self.parse_and_update_service_limits(&service, region, limit_str).await;
+                self.parse_and_update_service_limits(&service, region, limit_str)
+                    .await;
             }
         }
     }
@@ -155,7 +186,9 @@ impl RateLimiter {
         // Parse rate limit string like "20:1,100:120" (20 per 1 second, 100 per 120 seconds)
         for limit_pair in limit_str.split(',') {
             if let Some((count_str, window_str)) = limit_pair.split_once(':') {
-                if let (Ok(count), Ok(window)) = (count_str.parse::<u32>(), window_str.parse::<u64>()) {
+                if let (Ok(count), Ok(window)) =
+                    (count_str.parse::<u32>(), window_str.parse::<u64>())
+                {
                     if window == 1 {
                         let mut limiter = self.application_limiter_per_second.write().await;
                         *limiter = TokenBucket::per_second(count, count);
@@ -171,11 +204,13 @@ impl RateLimiter {
     async fn parse_and_update_method_limits(&self, endpoint: &str, region: &str, limit_str: &str) {
         let method_key = format!("{}:{}", endpoint, region);
         let limiter = self.get_or_create_method_limiter(&method_key);
-        
+
         // Parse and update method limits (similar to app limits)
         for limit_pair in limit_str.split(',') {
             if let Some((count_str, window_str)) = limit_pair.split_once(':') {
-                if let (Ok(count), Ok(window)) = (count_str.parse::<u32>(), window_str.parse::<u64>()) {
+                if let (Ok(count), Ok(window)) =
+                    (count_str.parse::<u32>(), window_str.parse::<u64>())
+                {
                     if window == 1 {
                         let mut limiter_guard = limiter.write().await;
                         *limiter_guard = TokenBucket::per_second(count, count);
@@ -188,11 +223,13 @@ impl RateLimiter {
 
     async fn parse_and_update_service_limits(&self, service: &str, region: &str, limit_str: &str) {
         let service_limiter = self.get_or_create_service_limiter(service, region);
-        
+
         // Parse and update service limits (similar to app limits)
         for limit_pair in limit_str.split(',') {
             if let Some((count_str, window_str)) = limit_pair.split_once(':') {
-                if let (Ok(count), Ok(window)) = (count_str.parse::<u32>(), window_str.parse::<u64>()) {
+                if let (Ok(count), Ok(window)) =
+                    (count_str.parse::<u32>(), window_str.parse::<u64>())
+                {
                     if window == 1 {
                         let mut limiter_guard = service_limiter.write().await;
                         *limiter_guard = TokenBucket::per_second(count, count);

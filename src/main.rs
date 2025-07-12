@@ -18,9 +18,11 @@ async fn main() {
     log::info!("Starting League of Legends crawler with config:");
     log::info!("- Regions: {:?}", config.regions);
     log::info!("- Database: {}", config.database_url);
-    log::info!("- Rate limits: {} per second, {} per 2 minutes", 
-              config.rate_limits.application_limit_per_second,
-              config.rate_limits.application_limit_per_two_minutes);
+    log::info!(
+        "- Rate limits: {} per second, {} per 2 minutes",
+        config.rate_limits.application_limit_per_second,
+        config.rate_limits.application_limit_per_two_minutes
+    );
 
     // Initialize database
     let database = match Database::new(&config.database_url) {
@@ -45,7 +47,9 @@ async fn main() {
     // Handle graceful shutdown
     let crawler_ref = &crawler;
     let shutdown_task = async {
-        tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for ctrl+c");
         log::info!("Received shutdown signal");
         crawler_ref.stop().await;
     };
