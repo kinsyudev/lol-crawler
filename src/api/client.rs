@@ -151,14 +151,6 @@ impl RiotApiClient {
         }
     }
 
-    pub async fn get_featured_games(
-        &self,
-        region: &str,
-    ) -> Result<FeaturedGamesResponse, ApiError> {
-        let url = Endpoints::featured_games(&self.config, region);
-        log::debug!("Fetching featured games for region: {}", region);
-        self.make_request_with_retry(&url, region).await
-    }
 
     pub async fn get_summoner_by_name(
         &self,

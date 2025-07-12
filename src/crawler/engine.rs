@@ -2,7 +2,7 @@ use super::{queue::SummonerQueue, worker::CrawlerWorker};
 use crate::api::RiotApiClient;
 use crate::config::Config;
 use crate::database::Database;
-use crate::models::database::{DbActiveGame, DbCrawlerState, SummonerPriority, SummonerTask};
+use crate::models::database::{DbCrawlerState, SummonerPriority, SummonerTask};
 use crate::rate_limiter::RateLimiter;
 use chrono::Utc;
 use std::sync::Arc;
@@ -47,18 +47,25 @@ impl CrawlerEngine {
 
         log::info!("Starting League of Legends crawler");
 
-        // Initialize with featured games from all regions
-        self.seed_with_featured_games().await?;
+        // First, seed with existing summoners from database
+        self.seed_with_existing_summoners().await?;
+        
+        // If queue is empty or small, supplement with Master+ league players
+        let queue_size = self.summoner_queue.total_size().await;
+        if queue_size < 100 {
+            log::info!("Queue size ({}) below threshold, seeding with Master+ league players", queue_size);
+            self.seed_with_master_league().await?;
+        } else {
+            log::info!("Sufficient existing summoners in queue ({}), skipping Master+ league seed", queue_size);
+        }
 
         // Spawn background tasks
-        let featured_games_task = self.spawn_featured_games_task();
         let crawler_task = self.spawn_crawler_task();
         let health_check_task = self.spawn_health_check_task();
         let state_save_task = self.spawn_state_save_task();
 
         // Wait for all tasks
         tokio::try_join!(
-            featured_games_task,
             crawler_task,
             health_check_task,
             state_save_task
@@ -77,21 +84,58 @@ impl CrawlerEngine {
         *self.running.read().await
     }
 
-    async fn seed_with_featured_games(&self) -> crate::Result<()> {
-        log::info!("Seeding crawler with featured games from all regions");
+    async fn seed_with_existing_summoners(&self) -> crate::Result<()> {
+        log::info!("Seeding crawler with existing summoners from database");
+        
+        // Get existing summoners from database, prioritizing least recently updated
+        let summoners = self.database.get_existing_summoners_for_update(1000)?;
+        
+        if summoners.is_empty() {
+            log::info!("No existing summoners found in database");
+            return Ok(());
+        }
+        
+        log::info!("Found {} existing summoners to update", summoners.len());
+        
+        // Create summoner tasks for existing users with medium priority
+        // (lower than featured games but higher than newly discovered players)
+        let summoner_tasks: Vec<SummonerTask> = summoners
+            .into_iter()
+            .map(|(puuid, region)| SummonerTask {
+                puuid: puuid.clone(),
+                region, 
+                priority: SummonerPriority::Medium,
+                summoner_name: format!("Existing_Player_{}", &puuid[..8]),
+                added_at: chrono::Utc::now(),
+                retries: 0,
+            })
+            .collect();
+            
+        self.summoner_queue.push_batch(summoner_tasks).await;
+        log::info!("Queued existing summoners for match updates");
+        
+        Ok(())
+    }
+
+    async fn seed_with_master_league(&self) -> crate::Result<()> {
+        log::info!("Seeding crawler with Master+ league players from all regions");
 
         for region in &self.config.regions {
-            match self.process_featured_games_for_region(region).await {
-                Ok(count) => {
+            match self.extract_summoners_from_master_league(region).await {
+                Ok(summoner_tasks) => {
+                    let count = summoner_tasks.len();
+                    if !summoner_tasks.is_empty() {
+                        self.summoner_queue.push_batch(summoner_tasks).await;
+                    }
                     log::info!(
-                        "Added {} high-priority summoners from {} featured games",
+                        "Added {} high-priority summoners from {} Master+ league",
                         count,
                         region
                     );
                 }
                 Err(e) => {
                     log::error!(
-                        "Failed to process featured games for region {}: {}",
+                        "Failed to process Master+ league for region {}: {}",
                         region,
                         e
                     );
@@ -100,97 +144,11 @@ impl CrawlerEngine {
         }
 
         let total_size = self.summoner_queue.total_size().await;
-        log::info!("Initial queue size: {}", total_size);
+        log::info!("Total queue size after Master+ league seed: {}", total_size);
 
         Ok(())
     }
 
-    async fn process_featured_games_for_region(&self, region: &str) -> crate::Result<usize> {
-        // Try featured games first, fallback to master league if not accessible
-        let summoner_tasks = match self.api_client.get_featured_games(region).await {
-            Ok(featured_games) => {
-                log::info!("Using featured games for seeding in region {}", region);
-                self.extract_summoners_from_featured_games(featured_games, region)
-                    .await?
-            }
-            Err(e) => {
-                log::warn!(
-                    "Featured games not accessible ({}), falling back to master league",
-                    e
-                );
-                self.extract_summoners_from_master_league(region).await?
-            }
-        };
-
-        let count = summoner_tasks.len();
-        if !summoner_tasks.is_empty() {
-            self.summoner_queue.push_batch(summoner_tasks).await;
-        }
-
-        Ok(count)
-    }
-
-    async fn extract_summoners_from_featured_games(
-        &self,
-        featured_games: crate::models::riot::FeaturedGamesResponse,
-        region: &str,
-    ) -> crate::Result<Vec<SummonerTask>> {
-        let mut summoner_tasks = Vec::new();
-
-        for game in featured_games.game_list {
-            // Store active game
-            let active_game = DbActiveGame {
-                game_id: game.game_id as i64,
-                game_type: game.game_type,
-                game_start_time: game.game_start_time as i64,
-                map_id: game.map_id as i32,
-                queue_id: game.game_queue_config_id.unwrap_or(0) as i32,
-                platform_id: game.platform_id,
-                game_mode: game.game_mode,
-                participants: serde_json::to_string(&game.participants)?,
-                discovered_at: Utc::now(),
-            };
-
-            if let Err(e) = self.database.insert_active_game(&active_game) {
-                log::warn!("Failed to store active game {}: {}", game.game_id, e);
-            }
-
-            // Extract summoners from participants
-            for participant in game.participants {
-                if let Some(puuid) = participant.puuid {
-                    // Check if we already have this summoner
-                    match self.database.summoner_exists(&puuid) {
-                        Ok(true) => continue, // Skip existing summoners
-                        Ok(false) => {
-                            // New summoner - add to high priority queue
-                            summoner_tasks.push(SummonerTask {
-                                puuid,
-                                summoner_name: participant.summoner_name,
-                                region: region.to_string(),
-                                priority: SummonerPriority::High,
-                                added_at: Utc::now(),
-                                retries: 0,
-                            });
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to check if summoner exists: {}", e);
-                            // Add anyway to be safe
-                            summoner_tasks.push(SummonerTask {
-                                puuid,
-                                summoner_name: participant.summoner_name,
-                                region: region.to_string(),
-                                priority: SummonerPriority::High,
-                                added_at: Utc::now(),
-                                retries: 0,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(summoner_tasks)
-    }
 
     async fn extract_summoners_from_master_league(
         &self,
@@ -243,49 +201,6 @@ impl CrawlerEngine {
         Ok(summoner_tasks)
     }
 
-    async fn spawn_featured_games_task(&self) -> crate::Result<()> {
-        let mut interval = interval(Duration::from_secs(
-            self.config.crawler.featured_games_interval_seconds,
-        ));
-        let _api_client = self.api_client.clone();
-        let _database = self.database.clone();
-        let _queue = &self.summoner_queue;
-        let regions = self.config.regions.clone();
-        let running = self.running.clone();
-
-        loop {
-            interval.tick().await;
-
-            if !*running.read().await {
-                break;
-            }
-
-            log::debug!("Refreshing featured games");
-
-            for region in &regions {
-                match self.process_featured_games_for_region(region).await {
-                    Ok(count) => {
-                        if count > 0 {
-                            log::info!(
-                                "Added {} new summoners from {} featured games",
-                                count,
-                                region
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "Failed to refresh featured games for region {}: {}",
-                            region,
-                            e
-                        );
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
 
     async fn spawn_crawler_task(&self) -> crate::Result<()> {
         let running = self.running.clone();

@@ -3,13 +3,6 @@ use crate::config::Config;
 pub struct Endpoints;
 
 impl Endpoints {
-    pub fn featured_games(config: &Config, region: &str) -> String {
-        format!(
-            "{}/lol/spectator/v4/featured-games",
-            config.base_url_for_region(region)
-        )
-    }
-
     pub fn summoner_by_name(config: &Config, region: &str, summoner_name: &str) -> String {
         format!(
             "{}/lol/summoner/v4/summoners/by-name/{}",
@@ -34,13 +27,6 @@ impl Endpoints {
         )
     }
 
-    pub fn active_games_by_summoner(config: &Config, region: &str, summoner_id: &str) -> String {
-        format!(
-            "{}/lol/spectator/v4/active-games/by-summoner/{}",
-            config.base_url_for_region(region),
-            summoner_id
-        )
-    }
 
     pub fn match_list_by_puuid(
         config: &Config,

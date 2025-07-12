@@ -265,6 +265,17 @@ impl Database {
         Ok(count)
     }
 
+    pub fn get_existing_summoners_for_update(&self, limit: i32) -> Result<Vec<(String, String)>> {
+        let summoners = self.query_map(
+            "SELECT puuid, region FROM summoners 
+             ORDER BY updated_at ASC 
+             LIMIT ?1",
+            &[&limit],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        Ok(summoners)
+    }
+
     pub fn get_participants_count(&self) -> Result<i64> {
         let count: i64 =
             self.query_row("SELECT COUNT(*) FROM participants", &[], |row| row.get(0))?;

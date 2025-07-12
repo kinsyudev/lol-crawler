@@ -25,7 +25,6 @@ pub struct CrawlerConfig {
     pub batch_size: usize,
     pub health_check_interval_seconds: u64,
     pub state_save_interval_seconds: u64,
-    pub featured_games_interval_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,7 +56,6 @@ impl Default for Config {
                 batch_size: 100,
                 health_check_interval_seconds: 60,
                 state_save_interval_seconds: 300,
-                featured_games_interval_seconds: 300,
             },
             logging: LoggingConfig {
                 level: "info".to_string(),
