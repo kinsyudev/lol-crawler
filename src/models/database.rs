@@ -133,7 +133,7 @@ pub struct DbApiCall {
     pub rate_limit_remaining: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SummonerPriority {
     High,   // Master+ tier, recently active
     Medium, // Diamond tier, active within 7 days

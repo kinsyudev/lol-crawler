@@ -90,7 +90,7 @@ impl TokenBucket {
     }
 
     fn calculate_wait_time(&self, tokens_needed: u32) -> Duration {
-        let intervals_needed = (tokens_needed + self.refill_rate - 1) / self.refill_rate; // Ceiling division
+        let intervals_needed = tokens_needed.div_ceil(self.refill_rate);
         Duration::from_millis(intervals_needed as u64 * self.refill_interval.as_millis() as u64)
     }
 }

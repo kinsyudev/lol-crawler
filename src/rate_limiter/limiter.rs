@@ -300,7 +300,7 @@ mod tests {
     async fn test_rate_limiter_creation() {
         let config = test_config();
         let limiter = RateLimiter::new(config);
-        
+
         let status = limiter.get_rate_limit_status().await;
         assert_eq!(status.application_tokens_per_second, 20);
         assert_eq!(status.application_tokens_per_two_minutes, 100);
@@ -312,8 +312,14 @@ mod tests {
         let limiter = RateLimiter::new(config);
 
         // Should be able to acquire permits initially
-        limiter.acquire_permit("/lol/summoner/v4/summoners/test", "na1").await.unwrap();
-        limiter.acquire_permit("/lol/match/v5/matches/test", "na1").await.unwrap();
+        limiter
+            .acquire_permit("/lol/summoner/v4/summoners/test", "na1")
+            .await
+            .unwrap();
+        limiter
+            .acquire_permit("/lol/match/v5/matches/test", "na1")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -354,9 +360,18 @@ mod tests {
         let config = test_config();
         let limiter = RateLimiter::new(config);
 
-        assert_eq!(limiter.extract_service_from_endpoint("/lol/summoner/v4/summoners/test"), "summoner");
-        assert_eq!(limiter.extract_service_from_endpoint("/lol/match/v5/matches/test"), "match");
-        assert_eq!(limiter.extract_service_from_endpoint("/lol/spectator/v4/featured-games"), "spectator");
+        assert_eq!(
+            limiter.extract_service_from_endpoint("/lol/summoner/v4/summoners/test"),
+            "summoner"
+        );
+        assert_eq!(
+            limiter.extract_service_from_endpoint("/lol/match/v5/matches/test"),
+            "match"
+        );
+        assert_eq!(
+            limiter.extract_service_from_endpoint("/lol/spectator/v4/featured-games"),
+            "spectator"
+        );
         assert_eq!(limiter.extract_service_from_endpoint("/invalid"), "unknown");
     }
 
@@ -368,7 +383,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("X-App-Rate-Limit", HeaderValue::from_static("10:1,50:120"));
 
-        limiter.update_limits_from_headers("/test", "na1", &headers).await;
+        limiter
+            .update_limits_from_headers("/test", "na1", &headers)
+            .await;
 
         let status = limiter.get_rate_limit_status().await;
         assert_eq!(status.application_tokens_per_second, 10);
@@ -386,7 +403,9 @@ mod tests {
         let endpoint = "/lol/summoner/v4/summoners/test";
         let region = "na1";
 
-        limiter.update_limits_from_headers(endpoint, region, &headers).await;
+        limiter
+            .update_limits_from_headers(endpoint, region, &headers)
+            .await;
 
         // Should be able to acquire 5 permits
         for _ in 0..5 {
@@ -434,7 +453,10 @@ mod tests {
         for i in 0..5 {
             let limiter_clone = limiter.clone();
             let handle = tokio::spawn(async move {
-                limiter_clone.acquire_permit(&format!("/test{}", i), "na1").await.unwrap();
+                limiter_clone
+                    .acquire_permit(&format!("/test{}", i), "na1")
+                    .await
+                    .unwrap();
             });
             handles.push(handle);
         }
@@ -458,8 +480,14 @@ mod tests {
         assert_eq!(status.service_limiters_count, 0);
 
         // Use some permits to create method limiters
-        limiter.acquire_permit("/lol/summoner/v4/test", "na1").await.unwrap();
-        limiter.acquire_permit("/lol/match/v5/test", "euw1").await.unwrap();
+        limiter
+            .acquire_permit("/lol/summoner/v4/test", "na1")
+            .await
+            .unwrap();
+        limiter
+            .acquire_permit("/lol/match/v5/test", "euw1")
+            .await
+            .unwrap();
 
         let status = limiter.get_rate_limit_status().await;
         assert!(status.application_tokens_per_second < 20); // Some consumed
@@ -472,7 +500,7 @@ mod tests {
         let mut config = test_config();
         config.retry_delay_ms = 50;
         config.max_retries = 2;
-        
+
         let limiter = RateLimiter::new(config);
 
         // Test that exponential backoff delays are calculated correctly

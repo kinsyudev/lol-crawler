@@ -10,7 +10,7 @@ impl Schema {
     /// Initialize the complete database schema
     pub fn initialize(conn: &Connection) -> SqliteResult<()> {
         log::info!("Initializing database schema version {}", SCHEMA_VERSION);
-        
+
         // Create all tables
         Self::create_summoners_table(conn)?;
         Self::create_matches_table(conn)?;
@@ -21,13 +21,13 @@ impl Schema {
         Self::create_crawler_state_table(conn)?;
         Self::create_api_calls_table(conn)?;
         Self::create_active_games_table(conn)?;
-        
+
         // Create indexes for performance
         Self::create_indexes(conn)?;
-        
+
         // Initialize default data
         Self::initialize_default_data(conn)?;
-        
+
         log::info!("Database schema initialized successfully");
         Ok(())
     }
@@ -248,7 +248,7 @@ impl Schema {
     /// Create database indexes for optimal query performance
     fn create_indexes(conn: &Connection) -> SqliteResult<()> {
         log::debug!("Creating database indexes");
-        
+
         // Participants table indexes
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_participants_match_id ON participants(match_id)",
@@ -258,7 +258,7 @@ impl Schema {
             "CREATE INDEX IF NOT EXISTS idx_participants_puuid ON participants(puuid)",
             [],
         )?;
-        
+
         // Matches table indexes
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_matches_game_creation ON matches(game_creation)",
@@ -268,13 +268,13 @@ impl Schema {
             "CREATE INDEX IF NOT EXISTS idx_matches_queue_id ON matches(queue_id)",
             [],
         )?;
-        
+
         // Summoners table indexes
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_summoners_region ON summoners(region)",
             [],
         )?;
-        
+
         Ok(())
     }
 
@@ -289,12 +289,14 @@ impl Schema {
     }
 
     /// Get the current schema version from the database
+    #[allow(dead_code)]
     pub fn get_version(_conn: &Connection) -> SqliteResult<i32> {
         // For now, we assume version 1. In future versions, we'd store this in a schema_info table
         Ok(SCHEMA_VERSION)
     }
 
     /// Check if the database needs migration
+    #[allow(dead_code)]
     pub fn needs_migration(conn: &Connection) -> SqliteResult<bool> {
         let current_version = Self::get_version(conn)?;
         Ok(current_version < SCHEMA_VERSION)
@@ -310,7 +312,7 @@ mod tests {
     fn test_schema_initialization() {
         let conn = Connection::open_in_memory().unwrap();
         Schema::initialize(&conn).unwrap();
-        
+
         // Verify tables exist
         let table_count: i32 = conn
             .query_row(
@@ -319,7 +321,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        
+
         // Should have 9 tables (8 data tables + sqlite_sequence)
         assert!(table_count >= 8);
     }

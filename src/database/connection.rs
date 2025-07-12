@@ -1,5 +1,5 @@
-use crate::Result;
 use super::schema::Schema;
+use crate::Result;
 use rusqlite::{Connection, Result as SqliteResult};
 use std::path::Path;
 use std::sync::{Arc, Mutex};

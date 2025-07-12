@@ -4,3 +4,4 @@ mod worker;
 
 pub use engine::CrawlerEngine;
 pub use queue::SummonerQueue;
+pub use worker::CrawlerWorker;

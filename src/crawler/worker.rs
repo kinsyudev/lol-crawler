@@ -253,7 +253,7 @@ impl CrawlerWorker {
                 primary_rune_tree: participant
                     .perks
                     .as_ref()
-                    .and_then(|p| p.styles.get(0).map(|s| s.style)),
+                    .and_then(|p| p.styles.first().map(|s| s.style)),
                 secondary_rune_tree: participant
                     .perks
                     .as_ref()

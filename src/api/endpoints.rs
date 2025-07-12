@@ -27,7 +27,6 @@ impl Endpoints {
         )
     }
 
-
     pub fn match_list_by_puuid(
         config: &Config,
         region: &str,

@@ -49,14 +49,20 @@ impl CrawlerEngine {
 
         // First, seed with existing summoners from database
         self.seed_with_existing_summoners().await?;
-        
+
         // If queue is empty or small, supplement with Master+ league players
         let queue_size = self.summoner_queue.total_size().await;
         if queue_size < 100 {
-            log::info!("Queue size ({}) below threshold, seeding with Master+ league players", queue_size);
+            log::info!(
+                "Queue size ({}) below threshold, seeding with Master+ league players",
+                queue_size
+            );
             self.seed_with_master_league().await?;
         } else {
-            log::info!("Sufficient existing summoners in queue ({}), skipping Master+ league seed", queue_size);
+            log::info!(
+                "Sufficient existing summoners in queue ({}), skipping Master+ league seed",
+                queue_size
+            );
         }
 
         // Spawn background tasks
@@ -65,11 +71,7 @@ impl CrawlerEngine {
         let state_save_task = self.spawn_state_save_task();
 
         // Wait for all tasks
-        tokio::try_join!(
-            crawler_task,
-            health_check_task,
-            state_save_task
-        )?;
+        tokio::try_join!(crawler_task, health_check_task, state_save_task)?;
 
         Ok(())
     }
@@ -86,34 +88,34 @@ impl CrawlerEngine {
 
     async fn seed_with_existing_summoners(&self) -> crate::Result<()> {
         log::info!("Seeding crawler with existing summoners from database");
-        
+
         // Get existing summoners from database, prioritizing least recently updated
         let summoners = self.database.get_existing_summoners_for_update(1000)?;
-        
+
         if summoners.is_empty() {
             log::info!("No existing summoners found in database");
             return Ok(());
         }
-        
+
         log::info!("Found {} existing summoners to update", summoners.len());
-        
+
         // Create summoner tasks for existing users with medium priority
         // (lower than featured games but higher than newly discovered players)
         let summoner_tasks: Vec<SummonerTask> = summoners
             .into_iter()
             .map(|(puuid, region)| SummonerTask {
                 puuid: puuid.clone(),
-                region, 
+                region,
                 priority: SummonerPriority::Medium,
                 summoner_name: format!("Existing_Player_{}", &puuid[..8]),
                 added_at: chrono::Utc::now(),
                 retries: 0,
             })
             .collect();
-            
+
         self.summoner_queue.push_batch(summoner_tasks).await;
         log::info!("Queued existing summoners for match updates");
-        
+
         Ok(())
     }
 
@@ -148,7 +150,6 @@ impl CrawlerEngine {
 
         Ok(())
     }
-
 
     async fn extract_summoners_from_master_league(
         &self,
@@ -200,7 +201,6 @@ impl CrawlerEngine {
         );
         Ok(summoner_tasks)
     }
-
 
     async fn spawn_crawler_task(&self) -> crate::Result<()> {
         let running = self.running.clone();
