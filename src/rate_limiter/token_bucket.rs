@@ -81,7 +81,7 @@ impl TokenBucket {
         let elapsed = now.duration_since(self.last_refill);
 
         if elapsed >= self.refill_interval {
-            let intervals_passed = elapsed.as_secs() / self.refill_interval.as_secs();
+            let intervals_passed = elapsed.as_millis() / self.refill_interval.as_millis();
             let tokens_to_add = (intervals_passed as u32) * self.refill_rate;
 
             self.tokens = (self.tokens + tokens_to_add).min(self.capacity);

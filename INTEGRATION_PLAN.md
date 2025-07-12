@@ -1,6 +1,6 @@
 # League of Legends Crawler - Comprehensive Integration Plan
 
-## 1. Database Schema Design (DuckDB)
+## 1. Database Schema Design (SQLite)
 
 ### Core Tables
 
@@ -269,7 +269,7 @@ pub enum SummonerPriority {
 ### Server Requirements
 - **CPU**: 4+ cores (concurrent request processing)
 - **RAM**: 8GB+ (queue management and caching)
-- **Storage**: 500GB+ SSD (DuckDB growth)
+- **Storage**: 500GB+ SSD (SQLite database growth)
 - **Network**: Stable connection with low latency to Riot servers
 
 ### Containerization (Docker)

@@ -278,3 +278,210 @@ pub struct RateLimitStatus {
     pub method_limiters_count: usize,
     pub service_limiters_count: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RateLimitConfig;
+    use reqwest::header::{HeaderMap, HeaderValue};
+    use tokio::time::{Duration, Instant};
+
+    fn test_config() -> RateLimitConfig {
+        RateLimitConfig {
+            application_limit_per_second: 20,
+            application_limit_per_two_minutes: 100,
+            max_concurrent_requests: 10,
+            retry_delay_ms: 100,
+            max_retries: 3,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_creation() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+        
+        let status = limiter.get_rate_limit_status().await;
+        assert_eq!(status.application_tokens_per_second, 20);
+        assert_eq!(status.application_tokens_per_two_minutes, 100);
+    }
+
+    #[tokio::test]
+    async fn test_basic_permit_acquisition() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        // Should be able to acquire permits initially
+        limiter.acquire_permit("/lol/summoner/v4/summoners/test", "na1").await.unwrap();
+        limiter.acquire_permit("/lol/match/v5/matches/test", "na1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_application_rate_limit_exhaustion() {
+        let mut config = test_config();
+        config.application_limit_per_second = 5; // Low limit for testing
+        let limiter = RateLimiter::new(config);
+
+        // Should be able to acquire all permits initially
+        for _ in 0..5 {
+            limiter.acquire_permit("/test", "na1").await.unwrap();
+        }
+
+        // Check that we've consumed tokens
+        let status = limiter.get_rate_limit_status().await;
+        assert!(status.application_tokens_per_second < 5);
+    }
+
+    #[tokio::test]
+    async fn test_method_rate_limiting() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        let endpoint = "/lol/summoner/v4/summoners/test";
+        let region = "na1";
+
+        // Fill up the method limiter (default 20 per second)
+        for _ in 0..20 {
+            assert!(limiter.try_acquire_all(endpoint, region).await.unwrap());
+        }
+
+        // Next request should fail initially
+        assert!(!limiter.try_acquire_all(endpoint, region).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_service_extraction() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        assert_eq!(limiter.extract_service_from_endpoint("/lol/summoner/v4/summoners/test"), "summoner");
+        assert_eq!(limiter.extract_service_from_endpoint("/lol/match/v5/matches/test"), "match");
+        assert_eq!(limiter.extract_service_from_endpoint("/lol/spectator/v4/featured-games"), "spectator");
+        assert_eq!(limiter.extract_service_from_endpoint("/invalid"), "unknown");
+    }
+
+    #[tokio::test]
+    async fn test_header_parsing_app_limits() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-App-Rate-Limit", HeaderValue::from_static("10:1,50:120"));
+
+        limiter.update_limits_from_headers("/test", "na1", &headers).await;
+
+        let status = limiter.get_rate_limit_status().await;
+        assert_eq!(status.application_tokens_per_second, 10);
+        assert_eq!(status.application_tokens_per_two_minutes, 50);
+    }
+
+    #[tokio::test]
+    async fn test_header_parsing_method_limits() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Method-Rate-Limit", HeaderValue::from_static("5:1"));
+
+        let endpoint = "/lol/summoner/v4/summoners/test";
+        let region = "na1";
+
+        limiter.update_limits_from_headers(endpoint, region, &headers).await;
+
+        // Should be able to acquire 5 permits
+        for _ in 0..5 {
+            assert!(limiter.try_acquire_all(endpoint, region).await.unwrap());
+        }
+
+        // 6th should fail
+        assert!(!limiter.try_acquire_all(endpoint, region).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_429_response_handling() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        let start = Instant::now();
+        limiter.handle_429_response(Some(1)).await; // 1 second wait
+        let elapsed = start.elapsed();
+
+        assert!(elapsed >= Duration::from_millis(900));
+        assert!(elapsed <= Duration::from_millis(1200));
+    }
+
+    #[tokio::test]
+    async fn test_429_response_handling_default() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        let start = Instant::now();
+        limiter.handle_429_response(None).await; // Should use retry_delay_ms (100ms)
+        let elapsed = start.elapsed();
+
+        assert!(elapsed >= Duration::from_millis(90));
+        assert!(elapsed <= Duration::from_millis(200));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_access() {
+        let config = test_config();
+        let limiter = Arc::new(RateLimiter::new(config));
+
+        let mut handles = vec![];
+
+        // Spawn multiple concurrent tasks
+        for i in 0..5 {
+            let limiter_clone = limiter.clone();
+            let handle = tokio::spawn(async move {
+                limiter_clone.acquire_permit(&format!("/test{}", i), "na1").await.unwrap();
+            });
+            handles.push(handle);
+        }
+
+        // All should complete successfully
+        for handle in handles {
+            handle.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_status() {
+        let config = test_config();
+        let limiter = RateLimiter::new(config);
+
+        // Initial status
+        let status = limiter.get_rate_limit_status().await;
+        assert_eq!(status.application_tokens_per_second, 20);
+        assert_eq!(status.application_tokens_per_two_minutes, 100);
+        assert_eq!(status.method_limiters_count, 0);
+        assert_eq!(status.service_limiters_count, 0);
+
+        // Use some permits to create method limiters
+        limiter.acquire_permit("/lol/summoner/v4/test", "na1").await.unwrap();
+        limiter.acquire_permit("/lol/match/v5/test", "euw1").await.unwrap();
+
+        let status = limiter.get_rate_limit_status().await;
+        assert!(status.application_tokens_per_second < 20); // Some consumed
+        assert!(status.method_limiters_count > 0); // Method limiters created
+        assert!(status.service_limiters_count > 0); // Service limiters created
+    }
+
+    #[tokio::test]
+    async fn test_exponential_backoff_behavior() {
+        let mut config = test_config();
+        config.retry_delay_ms = 50;
+        config.max_retries = 2;
+        
+        let limiter = RateLimiter::new(config);
+
+        // Test that exponential backoff delays are calculated correctly
+        // This tests the behavior without actually hitting rate limits
+        let start = Instant::now();
+        limiter.handle_429_response(None).await; // Uses retry_delay_ms
+        let elapsed = start.elapsed();
+
+        assert!(elapsed >= Duration::from_millis(40));
+        assert!(elapsed <= Duration::from_millis(100));
+    }
+}

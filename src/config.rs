@@ -87,8 +87,79 @@ impl Config {
             config.logging.level = log_level;
         }
 
+        // Rate limiting configuration
+        if let Ok(app_limit_per_second) = std::env::var("APPLICATION_LIMIT_PER_SECOND") {
+            if let Ok(limit) = app_limit_per_second.parse::<u32>() {
+                config.rate_limits.application_limit_per_second = limit;
+            }
+        }
+
+        if let Ok(app_limit_per_two_minutes) = std::env::var("APPLICATION_LIMIT_PER_TWO_MINUTES") {
+            if let Ok(limit) = app_limit_per_two_minutes.parse::<u32>() {
+                config.rate_limits.application_limit_per_two_minutes = limit;
+            }
+        }
+
+        if let Ok(max_concurrent) = std::env::var("MAX_CONCURRENT_REQUESTS") {
+            if let Ok(limit) = max_concurrent.parse::<u32>() {
+                config.rate_limits.max_concurrent_requests = limit;
+            }
+        }
+
+        // Crawler configuration
+        if let Ok(queue_limit) = std::env::var("QUEUE_SIZE_LIMIT") {
+            if let Ok(limit) = queue_limit.parse::<usize>() {
+                config.crawler.queue_size_limit = limit;
+            }
+        }
+
+        if let Ok(batch_size) = std::env::var("BATCH_SIZE") {
+            if let Ok(size) = batch_size.parse::<usize>() {
+                config.crawler.batch_size = size;
+            }
+        }
+
+        if let Ok(health_interval) = std::env::var("HEALTH_CHECK_INTERVAL_SECONDS") {
+            if let Ok(seconds) = health_interval.parse::<u64>() {
+                config.crawler.health_check_interval_seconds = seconds;
+            }
+        }
+
+        if let Ok(save_interval) = std::env::var("STATE_SAVE_INTERVAL_SECONDS") {
+            if let Ok(seconds) = save_interval.parse::<u64>() {
+                config.crawler.state_save_interval_seconds = seconds;
+            }
+        }
+
+        // Validation
         if config.riot_api_key.is_empty() {
             anyhow::bail!("RIOT_API_KEY environment variable is required");
+        }
+
+        if !config.riot_api_key.starts_with("RGAPI-") {
+            anyhow::bail!("RIOT_API_KEY must start with 'RGAPI-'");
+        }
+
+        // Validate regions
+        let valid_regions = ["na1", "euw1", "eun1", "kr", "br1", "jp1", "ru", "oc1", "tr1", "la1", "la2"];
+        for region in &config.regions {
+            if !valid_regions.contains(&region.as_str()) {
+                anyhow::bail!("Invalid region '{}'. Valid regions: {}", region, valid_regions.join(", "));
+            }
+        }
+
+        // Validate rate limits
+        if config.rate_limits.application_limit_per_second == 0 {
+            anyhow::bail!("APPLICATION_LIMIT_PER_SECOND must be greater than 0");
+        }
+
+        if config.rate_limits.max_concurrent_requests == 0 {
+            anyhow::bail!("MAX_CONCURRENT_REQUESTS must be greater than 0");
+        }
+
+        // Validate crawler config
+        if config.crawler.queue_size_limit == 0 {
+            anyhow::bail!("QUEUE_SIZE_LIMIT must be greater than 0");
         }
 
         Ok(config)
